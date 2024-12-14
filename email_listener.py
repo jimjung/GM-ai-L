@@ -1,6 +1,10 @@
 import os.path
 import threading
 import time
+from datetime import datetime
+from base64 import urlsafe_b64decode
+import base64
+
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
@@ -55,10 +59,15 @@ class GmailReader(threading.Thread):
                     if message['id'] not in self.processed_ids:
                         self.processed_ids.add(message['id'])
                         msg = self.service.users().messages().get(userId='me', id=message['id']).execute()
+
+                        # Extract email details
+                        timestamp_ms = int(msg.get('internalDate', 0))  # Get timestamp in milliseconds
+                        email_body = self.get_email_body(msg)
                         email_data = {
                             "From": self.get_header(msg, 'From'),
                             "Subject": self.get_header(msg, 'Subject'),
-                            "Snippet": msg.get('snippet'),
+                            "Body": email_body,
+                            "Timestamp": datetime.fromtimestamp(timestamp_ms / 1000.0).strftime('%Y-%m-%d %H:%M:%S')
                         }
                         print(f"New Email Received:\n{email_data}\n{'=' * 50}")
 
@@ -76,6 +85,38 @@ class GmailReader(threading.Thread):
             if header['name'] == header_name:
                 return header['value']
         return None
+
+    @staticmethod
+    def get_email_body(msg):
+        """
+        Extract the full email body from the message.
+        Handles plain text and HTML content.
+        """
+        try:
+            parts = msg['payload'].get('parts', [])
+            body = None
+
+            if not parts:  # If no 'parts', it's a single-part message
+                body = msg['payload']['body'].get('data')
+            else:  # Multi-part message
+                for part in parts:
+                    if part['mimeType'] == 'text/plain':  # Prefer plain text
+                        body = part['body'].get('data')
+                        break
+                    elif part['mimeType'] == 'text/html':  # Fallback to HTML
+                        body = part['body'].get('data')
+
+            if body:
+                # Decode the base64url-encoded body content
+                decoded_body = base64.urlsafe_b64decode(body).decode('utf-8')
+                # Replace carriage returns with newlines for better readability
+                return decoded_body.replace("\r\n", "\n").strip()
+            else:
+                return "No body content available."
+
+        except Exception as e:
+            return f"Error extracting email body: {e}"
+
 
     def stop(self):
         self.running = False
