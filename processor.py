@@ -68,7 +68,6 @@ If any fields cannot be extracted, set their value to null.
 Note that priority must fall into the buckets of Low, Medium, High, Critical, and cannot be null.
 Ensure the output is valid JSON.
 """)
-        
 
         # Send the prompt to OpenAI
         response = openai.chat.completions.create(
