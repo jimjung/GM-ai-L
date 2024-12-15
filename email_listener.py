@@ -1,14 +1,15 @@
-import os.path
 import threading
 import time
-from datetime import datetime
-from base64 import urlsafe_b64decode
 import base64
+from datetime import datetime
+import os
 
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
+from pdfminer.high_level import extract_text
+from io import BytesIO
 
 # If modifying these scopes, delete the token.json file
 SCOPES = ['https://www.googleapis.com/auth/gmail.readonly']
@@ -63,11 +64,13 @@ class GmailReader(threading.Thread):
                         # Extract email details
                         timestamp_ms = int(msg.get('internalDate', 0))  # Get timestamp in milliseconds
                         email_body = self.get_email_body(msg)
+                        parsed_attachments = self.parse_attachments(msg)  # Parse attachments
                         email_data = {
                             "From": self.get_header(msg, 'From'),
                             "Subject": self.get_header(msg, 'Subject'),
                             "Body": email_body,
-                            "Timestamp": datetime.fromtimestamp(timestamp_ms / 1000.0).strftime('%Y-%m-%d %H:%M:%S')
+                            "Timestamp": datetime.fromtimestamp(timestamp_ms / 1000.0).strftime('%Y-%m-%d %H:%M:%S'),
+                            "ParsedAttachments": parsed_attachments,
                         }
                         print(f"New Email Received:\n{email_data}\n{'=' * 50}")
 
@@ -117,6 +120,42 @@ class GmailReader(threading.Thread):
         except Exception as e:
             return f"Error extracting email body: {e}"
 
+    def parse_attachments(self, msg):
+        """
+        Extract and parse attachments from the email message.
+        Returns the parsed content of attachments.
+        """
+        parsed_attachments = []
+        parts = msg['payload'].get('parts', [])
+        for part in parts:
+            if part.get('filename'):  # Check if the part has a filename (i.e., it's an attachment)
+                attachment_id = part['body'].get('attachmentId')
+                if attachment_id:
+                    attachment = self.service.users().messages().attachments().get(
+                        userId='me', messageId=msg['id'], id=attachment_id).execute()
+                    data = attachment.get('data')
+
+                    if data:
+                        file_data = base64.urlsafe_b64decode(data)
+                        # Parse PDFs with pdfminer
+                        if part['mimeType'] == 'application/pdf':
+                            try:
+                                pdf_text = extract_text(BytesIO(file_data))
+                                parsed_attachments.append({
+                                    "filename": part['filename'],
+                                    "content": pdf_text.strip()
+                                })
+                            except Exception as e:
+                                parsed_attachments.append({
+                                    "filename": part['filename'],
+                                    "error": f"Error parsing PDF: {e}"
+                                })
+                        else:
+                            parsed_attachments.append({
+                                "filename": part['filename'],
+                                "content": f"Unsupported file type: {part['mimeType']}"
+                            })
+        return parsed_attachments
 
     def stop(self):
         self.running = False

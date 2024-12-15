@@ -5,3 +5,4 @@ google-api-python-client
 supabase
 openai
 pyyaml
+pdfminer.six

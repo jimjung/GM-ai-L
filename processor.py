@@ -13,18 +13,22 @@ def load_from_yaml(key):
 
 # Set the OpenAI API key
 openai.api_key = load_from_yaml("openai")
+
 # Supabase setup
 SUPABASE_URL = load_from_yaml("supabase_url")
 SUPABASE_KEY = load_from_yaml("supabase_key")
 supa_client = supabase.create_client(SUPABASE_URL, SUPABASE_KEY)
 
 def save_to_supabase(email_data, parsed_data):
-    """Save parsed email content to Supabase."""
+    """Save parsed email content and attachments to Supabase."""
     try:
         # Format timestamp into ISO 8601 format for consistency
         timestamp = email_data.get("Timestamp")
         if timestamp:
             timestamp = datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S").isoformat()
+
+        # Prepare attachments as JSON array
+        attachments = email_data.get("ParsedAttachments", [])
 
         # Insert email data into Supabase
         response = supa_client.table("inbox").insert({
@@ -32,6 +36,7 @@ def save_to_supabase(email_data, parsed_data):
             "address": email_data['From'],
             "subject": email_data['Subject'],
             "message": email_data['Body'],
+            "attachments": attachments,  # Directly insert as jsonb array
             "category": parsed_data.get("category"),
             "priority": parsed_data.get("priority"),
             "customer_name": parsed_data.get("customer_name"),
@@ -47,16 +52,24 @@ def save_to_supabase(email_data, parsed_data):
         print(f"Error saving to Supabase: {e}")
 
 
-def extract_important_content(email_text):
+
+def extract_important_content(email_text, parsed_attachments):
     """
-    Use OpenAI API to parse important content from the email.
+    Use OpenAI API to parse important content from the email and attachments.
     Enforce a structured response to ensure consistency.
     """
     try:
+        # Combine email text with parsed attachments
+        combined_content = email_text
+        if parsed_attachments:
+            combined_content += "\n\nAttachments Content:\n"
+            for attachment in parsed_attachments:
+                combined_content += f"Filename: {attachment['filename']}\nContent: {attachment['content']}\n"
+
         # Define the system message with explicit formatting instructions
         system_message = ("""
 You are a data extraction assistant. Parse the following email text 
-and provide the output in the following consistent JSON format: 
+and attachment content, and provide the output in the following consistent JSON format: 
 {
     "category": "string",
     "priority": "string",
@@ -74,7 +87,7 @@ Ensure the output is valid JSON.
             model="gpt-4",
             messages=[
                 {"role": "system", "content": system_message},
-                {"role": "user", "content": email_text}
+                {"role": "user", "content": combined_content}
             ]
         )
         
@@ -113,7 +126,6 @@ Ensure the output is valid JSON.
         }
 
 
-
 def filter_clients(email_data, client_list):
     """Check if the sender is in the client list."""
     sender = email_data['From']
@@ -129,8 +141,9 @@ def process_email(email_data):
         print(email_data)
 
         # Extract detailed content using OpenAI API
-        email_text = f"Subject: {email_data['Subject']}\Body: {email_data['Body']}"
-        parsed_data = extract_important_content(email_text)
+        email_text = f"Subject: {email_data['Subject']}\nBody: {email_data['Body']}"
+        parsed_attachments = email_data.get("ParsedAttachments", [])
+        parsed_data = extract_important_content(email_text, parsed_attachments)
 
         # Save the processed content to Supabase
         save_to_supabase(email_data, parsed_data)
