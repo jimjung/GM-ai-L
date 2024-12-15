@@ -95,30 +95,34 @@ class GmailReader(threading.Thread):
         Extract the full email body from the message.
         Handles plain text and HTML content.
         """
+        def extract_parts(parts):
+            """Recursively extract text/plain or text/html content."""
+            for part in parts:
+                if part.get("mimeType") == "text/plain":  # Prefer plain text
+                    body = part["body"].get("data")
+                    if body:
+                        return base64.urlsafe_b64decode(body).decode("utf-8").strip()
+                elif part.get("mimeType") == "text/html":  # Fallback to HTML
+                    body = part["body"].get("data")
+                    if body:
+                        return base64.urlsafe_b64decode(body).decode("utf-8").strip()
+                elif "parts" in part:  # If nested parts, recurse
+                    nested_body = extract_parts(part["parts"])
+                    if nested_body:
+                        return nested_body
+            return None
+
         try:
-            parts = msg['payload'].get('parts', [])
-            body = None
-
-            if not parts:  # If no 'parts', it's a single-part message
-                body = msg['payload']['body'].get('data')
-            else:  # Multi-part message
-                for part in parts:
-                    if part['mimeType'] == 'text/plain':  # Prefer plain text
-                        body = part['body'].get('data')
-                        break
-                    elif part['mimeType'] == 'text/html':  # Fallback to HTML
-                        body = part['body'].get('data')
-
-            if body:
-                # Decode the base64url-encoded body content
-                decoded_body = base64.urlsafe_b64decode(body).decode('utf-8')
-                # Replace carriage returns with newlines for better readability
-                return decoded_body.replace("\r\n", "\n").strip()
-            else:
-                return "No body content available."
-
+            # Handle single-part messages
+            if "parts" not in msg["payload"]:
+                body = msg["payload"]["body"].get("data")
+                if body:
+                    return base64.urlsafe_b64decode(body).decode("utf-8").strip()
+            # Handle multi-part messages
+            return extract_parts(msg["payload"]["parts"]) or "No body content available."
         except Exception as e:
             return f"Error extracting email body: {e}"
+
 
     def parse_attachments(self, msg):
         """
@@ -137,8 +141,10 @@ class GmailReader(threading.Thread):
 
                     if data:
                         file_data = base64.urlsafe_b64decode(data)
-                        # Parse PDFs with pdfminer
+                        
+                        # Handle different file types
                         if part['mimeType'] == 'application/pdf':
+                            # Parse PDFs with pdfminer
                             try:
                                 pdf_text = extract_text(BytesIO(file_data))
                                 parsed_attachments.append({
@@ -150,12 +156,27 @@ class GmailReader(threading.Thread):
                                     "filename": part['filename'],
                                     "error": f"Error parsing PDF: {e}"
                                 })
+                        elif part['mimeType'] == 'text/plain':
+                            # Handle plain text files
+                            try:
+                                text_content = file_data.decode('utf-8').strip()
+                                parsed_attachments.append({
+                                    "filename": part['filename'],
+                                    "content": text_content
+                                })
+                            except Exception as e:
+                                parsed_attachments.append({
+                                    "filename": part['filename'],
+                                    "error": f"Error decoding text file: {e}"
+                                })
                         else:
+                            # Unsupported file types
                             parsed_attachments.append({
                                 "filename": part['filename'],
                                 "content": f"Unsupported file type: {part['mimeType']}"
                             })
         return parsed_attachments
+
 
     def stop(self):
         self.running = False
@@ -164,7 +185,7 @@ class GmailReader(threading.Thread):
 
 def main():
     # Start GmailReader in a separate thread
-    reader = GmailReader(callback=process_email)
+    reader = GmailReader()
     reader.start()
 
     print("Email listener started. Press Ctrl+C to stop.")

@@ -68,20 +68,22 @@ def extract_important_content(email_text, parsed_attachments):
 
         # Define the system message with explicit formatting instructions
         system_message = ("""
-You are a data extraction assistant. Parse the following email text 
-and attachment content, and provide the output in the following consistent JSON format: 
-{
-    "category": "string",
-    "priority": "string",
-    "customer_name": "string",
-    "action_required": true/false,
-    "notes": "string"
-}. 
-If any fields cannot be extracted, set their value to null. 
-Note that priority must fall into the buckets of Low, Medium, High, Critical, and cannot be null.
-Note that action required must be true/false and cannot be null.
-Ensure the output is a valid JSON.
-""")
+        You are a data extraction and task execution assistant. Parse the following email text 
+        and attachment content, and provide the output in the following consistent JSON format: 
+        {
+            "category": "string",
+            "priority": "string",
+            "customer_name": "string",
+            "action_required": true/false,
+            "notes": "string"
+        }. 
+
+        If any fields cannot be extracted, set their value to null. 
+        Note that priority must fall into the buckets of Low, Medium, High, Critical, and cannot be null.
+        Note that action required must be true/false and cannot be null.
+
+        If the email text or attachment contains a specific task or request, make your best effort to perform that task. Document the results of the task in the `notes` field, ensuring your response is relevant and complete. Ensure the output is a valid JSON.
+        """)
 
         # Send the prompt to OpenAI
         response = openai.chat.completions.create(
