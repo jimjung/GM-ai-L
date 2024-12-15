@@ -142,7 +142,7 @@ def process_email(email_data):
         print(email_data)
 
         # Extract detailed content using OpenAI API
-        email_text = f"Subject: {email_data['Subject']}\nBody: {email_data['Body']}"
+        email_text = f"Author: {email_data['From']}\n Timestamp: {email_data['Timestamp']} \n Subject: {email_data['Subject']}\nBody: {email_data['Body']}"
         parsed_attachments = email_data.get("ParsedAttachments", [])
         parsed_data = extract_important_content(email_text, parsed_attachments)
 
