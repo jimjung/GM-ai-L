@@ -79,7 +79,8 @@ and attachment content, and provide the output in the following consistent JSON 
 }. 
 If any fields cannot be extracted, set their value to null. 
 Note that priority must fall into the buckets of Low, Medium, High, Critical, and cannot be null.
-Ensure the output is valid JSON.
+Note that action required must be true/false and cannot be null.
+Ensure the output is a valid JSON.
 """)
 
         # Send the prompt to OpenAI

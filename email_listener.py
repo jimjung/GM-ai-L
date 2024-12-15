@@ -161,15 +161,6 @@ class GmailReader(threading.Thread):
         self.running = False
 
 
-def process_email(email_data):
-    """
-    Callback function to process emails.
-    Replace this with your email parsing logic.
-    """
-    print("Processing email:")
-    print(email_data)
-    # Add your parsing logic here, e.g., save to a database or analyze the content
-
 
 def main():
     # Start GmailReader in a separate thread
